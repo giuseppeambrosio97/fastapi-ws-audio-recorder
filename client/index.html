@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Recording WebSocket Test</title>
+</head>
+<body>
+    <h1>Voice Recording WebSocket Test</h1>
+    <button id="startButton">Start Recording</button>
+    <button id="stopButton" disabled>Stop Recording</button>
+    <p>Status: <span id="status">Idle</span></p>
+
+    <script>
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const statusDisplay = document.getElementById('status');
+
+        let websocket;
+        let mediaRecorder;
+
+        startButton.onclick = async () => {
+            if (!("WebSocket" in window)) {
+                alert("WebSocket is not supported by your browser.");
+                return;
+            }
+
+            websocket = new WebSocket("ws://localhost:8080/ws/audio");
+
+            websocket.onopen = () => {
+                statusDisplay.innerText = "WebSocket connected. Starting audio recording...";
+            };
+
+            websocket.onclose = () => {
+                statusDisplay.innerText = "WebSocket disconnected.";
+            };
+
+            websocket.onerror = (error) => {
+                console.error("WebSocket error:", error);
+                statusDisplay.innerText = "WebSocket error.";
+            };
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0 && websocket.readyState === WebSocket.OPEN) {
+                        websocket.send(event.data);
+                    }
+                };
+
+                mediaRecorder.onstart = () => {
+                    statusDisplay.innerText = "Recording...";
+                    startButton.disabled = true;
+                    stopButton.disabled = false;
+                };
+
+                mediaRecorder.onstop = () => {
+                    statusDisplay.innerText = "Recording stopped.";
+                    startButton.disabled = false;
+                    stopButton.disabled = true;
+                    websocket.close();
+                };
+
+                mediaRecorder.start(100); // Send audio data every 100ms
+            } catch (error) {
+                alert("Could not access the microphone: " + error.message);
+            }
+        };
+
+        stopButton.onclick = () => {
+            if (mediaRecorder && mediaRecorder.state === "recording") {
+                mediaRecorder.stop();
+            }
+        };
+    </script>
+</body>
+</html>
